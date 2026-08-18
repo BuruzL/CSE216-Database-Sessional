@@ -1,4 +1,6 @@
---7.1 a
+-- --7.1 a
+-- a. Find EMPLOYEE_ID of those employees who are not managers. Use minus operator to
+-- perform this.
 SELECT EMPLOYEE_ID
 FROM EMPLOYEES E 
 MINUS 
@@ -6,7 +8,8 @@ SELECT M.MANAGER_ID
 FROM EMPLOYEES M 
 WHERE M.MANAGER_ID IS NOT NULL;
 
---b
+
+-- b. Find last names of those employees who are not managers. Use minus operator to perform this.
 SELECT LAST_NAME
 FROM EMPLOYEES 
 minus
@@ -18,7 +21,7 @@ WHERE EMPLPOYEE_ID IN(
     WHERE MANAGER_ID IS NOT NULL
 );
 
---c
+-- c. Find the LOCATION_ID of those locations having no departments.
 SELECT LOCATION_ID
 FROM LOCATIONS
 minus
