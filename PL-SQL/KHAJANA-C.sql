@@ -1,3 +1,77 @@
+-- 1. The Finance team wants a country-wise report of how much each department costs the
+-- company per month. An employee's monthly cost is their salary plus commission:
+-- SALARY * (1 + COMMISSION_PCT)
+-- An employee with no commission (COMMISSION_PCT is NULL) costs just their salary. A
+-- department's country is found through DEPARTMENTS.LOCATION_ID →
+-- LOCATIONS.COUNTRY_ID. Country codes are stored in upper case (e.g. 'US', 'GB').
+-- A table named DEPT_PAYROLL_SUMMARY needs to be created:
+-- CREATE TABLE DEPT_PAYROLL_SUMMARY (
+-- COUNTRY_ID VARCHAR2(2),
+-- DEPARTMENT_ID NUMBER,
+-- DEPARTMENT_NAME VARCHAR2(30),
+-- CITY VARCHAR2(30),
+-- MONTHLY_PAYROLL NUMBER,
+-- PAYROLL_BAND VARCHAR2(10),
+-- GENERATED_BY VARCHAR2(30),
+-- GENERATED_ON DATE
+-- );
+-- Tasks:
+-- (a) Function
+-- Write a function
+-- GET_DEPT_PAYROLL (
+-- P_DEPT_ID IN NUMBER
+-- ) RETURN NUMBER
+-- that returns the total monthly cost of all employees of the department identified by
+-- P_DEPT_ID, rounded to 2 decimals.
+-- ● If the department exists but has no employees, return 0.
+-- ● If the department ID does not exist in DEPARTMENTS, return -1 (handle it in the
+-- exception section).
+
+-- (b) Procedure
+-- Write a procedure
+-- BUILD_COUNTRY_PAYROLL (
+-- P_COUNTRY_ID IN VARCHAR2,
+-- P_STAFFED_DEPTS OUT NUMBER,
+-- P_TOTAL_PAYROLL OUT NUMBER,
+-- P_TOP_DEPT_ID OUT NUMBER
+-- )
+-- that performs the following:
+-- ● Deletes previous rows from DEPT_PAYROLL_SUMMARY for the given country (so the
+-- procedure can be re-run).
+-- ● Processes every department located in P_COUNTRY_ID, in DEPARTMENT_ID order,
+-- and calls GET_DEPT_PAYROLL for each one.
+-- ● Decides the payroll band (conditions checked top to bottom):
+
+-- Condition (checked top to bottom) Band
+-- payroll = 0 EMPTY
+-- payroll ≤ 25000 SMALL
+-- payroll ≤ 100000 MEDIUM
+-- otherwise LARGE
+
+-- ● Inserts one row into DEPT_PAYROLL_SUMMARY for every department of the country,
+-- including EMPTY ones:
+-- ○ country ID
+-- ○ department ID
+-- ○ department name
+-- ○ city
+-- ○ monthly payroll
+-- ○ band
+-- ○ database user
+-- ○ current date/time
+-- ● Returns:
+-- ○ P_STAFFED_DEPTS = number of departments whose payroll is greater than 0
+-- ○ P_TOTAL_PAYROLL = sum of the payrolls of all departments of the country
+-- ○ P_TOP_DEPT_ID = the department with the highest payroll (on a tie, the smaller
+-- DEPARTMENT_ID), or NULL if no department has any employees
+
+-- ● If the country has no departments at all, prints No departments in country
+-- <id> and returns 0, 0, NULL.
+
+-- (c) Anonymous block
+-- Write an anonymous PL/SQL block that executes the procedure for country 'US' and
+-- then for country 'IT', and prints the three OUT parameter values after each call (print a
+-- NULL value as the word NULL).
+
 CREATE TABLE DEPT_PAYROLL_SUMMARY (
 COUNTRY_ID VARCHAR2(2),
 DEPARTMENT_ID NUMBER,
@@ -17,15 +91,20 @@ CREATE OR REPLACE FUNCTION GET_DEPT_PAYROLL(
 --VAR
 V_TOTAL_COST NUMBER;
 V_EMP_CNT NUMBER;
+V_DEPT_ID NUMBER;
 BEGIN 
+
+      SELECT DEPARTMENT_ID
+    INTO   V_DEPT_ID
+    FROM   DEPARTMENTS
+    WHERE  DEPARTMENT_ID = P_DEPT_ID;
+
+
     BEGIN 
         SELECT COUNT(*)
         INTO V_EMP_CNT 
         FROM EMPLOYEES 
         WHERE DEPARTMENT_ID=P_DEPT_ID;
-        EXCEPTION 
-        WHEN NO_DATA_FOUND THEN 
-        RETURN -1;
     END;
     IF V_EMP_CNT=0 THEN
     RETURN 0;
@@ -34,13 +113,21 @@ BEGIN
     V_TOTAL_COST:=0;
 
     FOR EMP_REC IN (
-        SELECT E.EMPLOYEE_ID, E.SALARY 
+        SELECT E.EMPLOYEE_ID, E.SALARY ,
+        E.COMMISSION_PCT
         FROM EMPLOYEES E
         WHERE E.DEPARTMENT_ID=P_DEPT_ID
     )LOOP 
+        IF EMP_REC.COMMISSION_PCT IS NULL THEN 
+        V_TOTAL_COST:=V_TOTAL_COST+EMP_REC.SALARY;
+        ELSE 
         V_TOTAL_COST:=V_TOTAL_COST+EMP_REC.SALARY*(EMP_REC.COMMISSION_PCT+1);
+        END IF;
       END LOOP;
-      RETURN V_TOTAL_COST;  
+       RETURN ROUND(V_TOTAL_COST, 2);
+       EXCEPTION 
+        WHEN NO_DATA_FOUND THEN 
+        RETURN -1;
 END GET_DEPT_PAYROLL;
 /
 
@@ -54,16 +141,18 @@ P_TOP_DEPT_ID OUT NUMBER
 ) IS 
 --VARS
 V_PAYROLL NUMBER;
-BAND VARCHAR2;
+BAND VARCHAR2(10);
 PREV_PAYROLL NUMBER;
+PREV_DEPT_ID NUMBER;
 BEGIN 
-    DELETE DEPT_PAYROLL_SUMMARY
+    DELETE FROM DEPT_PAYROLL_SUMMARY
     WHERE COUNTRY_ID=P_COUNTRY_ID;
 
     P_STAFFED_DEPTS:=0;
     P_TOTAL_PAYROLL:=0;
-    P_TOP_DEPT_ID:=0;
+    P_TOP_DEPT_ID:=NULL;
     PREV_PAYROLL:=0;
+    PREV_DEPT_ID:=0;
 
     FOR DEPT_INFO IN (
         SELECT C.COUNTRY_ID,
@@ -76,14 +165,24 @@ BEGIN
         JOIN COUNTRIES C 
         ON L.COUNTRY_ID=C.COUNTRY_ID 
         WHERE C.COUNTRY_ID=P_COUNTRY_ID
+        ORDER BY D.DEPARTMENT_ID
     )loop
+
+
     V_PAYROLL:=GET_DEPT_PAYROLL(DEPT_INFO.DEPARTMENT_ID);
     P_TOTAL_PAYROLL:=P_TOTAL_PAYROLL+V_PAYROLL;
+
+
     IF(V_PAYROLL>PREV_PAYROLL)then
     P_TOP_DEPT_ID:=DEPT_INFO.DEPARTMENT_ID;
     PREV_PAYROLL:=V_PAYROLL;
-    ELSIF V_PAYROLL=PREV_PAYROLL
-    --SMALLER DEPT ID
+    PREV_DEPT_ID:=DEPT_INFO.DEPARTMENT_ID;
+    ELSIF V_PAYROLL=PREV_PAYROLL THEN 
+        IF PREV_DEPT_ID<DEPT_INFO.DEPARTMENT_ID THEN 
+        P_TOP_DEPT_ID:=PREV_DEPT_ID;
+        ELSE 
+        P_TOP_DEPT_ID:=DEPT_INFO.DEPARTMENT_ID;
+        END IF;
     END IF;
 
     IF V_PAYROLL=0 THEN
@@ -122,19 +221,18 @@ END;
 
 SET SERVEROUTPUT ON;
 DECLARE 
-P_STAFFED_DEPTS NUMBER,
-P_TOTAL_PAYROLL NUMBER,
-P_TOP_DEPT_ID NUMBER
+P_STAFFED_DEPTS NUMBER;
+P_TOTAL_PAYROLL NUMBER;
+P_TOP_DEPT_ID NUMBER;
 BEGIN 
     BUILD_COUNTRY_PAYROLL('US', P_STAFFED_DEPTS,P_TOTAL_PAYROLL,
     P_TOP_DEPT_ID);
- DBMS_OUTPUT.PUT_LINE( P_STAFFED_DEPTS || P_TOTAL_PAYROLL||  P_TOP_DEPT_ID);
+ DBMS_OUTPUT.PUT_LINE( P_STAFFED_DEPTS || ' '||P_TOTAL_PAYROLL|| ' '|| P_TOP_DEPT_ID);
   BUILD_COUNTRY_PAYROLL('IT', P_STAFFED_DEPTS,P_TOTAL_PAYROLL,
     P_TOP_DEPT_ID);
- DBMS_OUTPUT.PUT_LINE( P_STAFFED_DEPTS || P_TOTAL_PAYROLL||  P_TOP_DEPT_ID);
+DBMS_OUTPUT.PUT_LINE( P_STAFFED_DEPTS || ' '||P_TOTAL_PAYROLL|| ' '|| P_TOP_DEPT_ID);
 END;
 /
-
 
 
 
