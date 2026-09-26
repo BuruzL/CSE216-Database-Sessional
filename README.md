@@ -10,5 +10,5 @@ Course works for CSE216 Database Sessional.
 - Solutions from Sukarna Sir's book
 
 Lamia Buruz  
-CSE24, BUET
+CSE24, BUET,
 2405118
