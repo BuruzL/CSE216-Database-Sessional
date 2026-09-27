@@ -1,6 +1,6 @@
 # CSE216 - Database Sessional
 
-Course works for CSE216 Database Sessional.
+Practices for CSE216 Database Sessional.
 
 ## Contents
 
